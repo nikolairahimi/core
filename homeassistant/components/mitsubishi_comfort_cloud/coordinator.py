@@ -1,6 +1,7 @@
 """DataUpdateCoordinator for Mitsubishi Comfort Cloud devices."""
 
 from collections.abc import Awaitable
+from datetime import timedelta
 import logging
 from typing import override
 
@@ -8,13 +9,15 @@ from mitsubishi_comfort import CloudIndoorUnit, CommandResult
 from mitsubishi_comfort.exceptions import AuthenticationError, MitsubishiComfortError
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import DEFAULT_SCAN_INTERVAL, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
+
+_COMMAND_SCAN_INTERVALS = (1, 2, 4, 8, 16)
 
 type MitsubishiComfortCloudConfigEntry = ConfigEntry[
     dict[str, MitsubishiComfortCloudCoordinator]
@@ -42,12 +45,40 @@ class MitsubishiComfortCloudCoordinator(DataUpdateCoordinator[CloudIndoorUnit]):
         )
         self.device = device
         self.data = device
+        self._command_polls_remaining = 0
+        self._command_generation = 0
+
+    @callback
+    def async_command_accepted(self) -> None:
+        """Poll quickly after a command, then back off if it stays unconfirmed."""
+        self._command_generation += 1
+        self._command_polls_remaining = len(_COMMAND_SCAN_INTERVALS)
+        self.update_interval = timedelta(seconds=_COMMAND_SCAN_INTERVALS[0])
+        self._schedule_refresh()
+
+    @property
+    def command_confirmation_active(self) -> bool:
+        """Return whether accelerated command confirmation polls remain."""
+        return self._command_polls_remaining > 0
+
+    @callback
+    def async_stop_command_polling(self) -> None:
+        """Stop accelerated polling when no commands remain pending."""
+        self._command_polls_remaining = 0
+        self.update_interval = DEFAULT_SCAN_INTERVAL
+        self._schedule_refresh()
 
     @override
     async def _async_update_data(self) -> CloudIndoorUnit:
         """Poll the device and return it."""
+        generation = self._command_generation
         try:
-            success = await self.device.update_status()
+            if not await self.device.update_status():
+                raise UpdateFailed(
+                    translation_domain=DOMAIN,
+                    translation_key="update_failed",
+                    translation_placeholders={"device_name": self.device.name},
+                )
         except AuthenticationError as err:
             raise ConfigEntryAuthFailed(
                 translation_domain=DOMAIN, translation_key="authentication_failed"
@@ -58,12 +89,16 @@ class MitsubishiComfortCloudCoordinator(DataUpdateCoordinator[CloudIndoorUnit]):
                 translation_key="communication_error",
                 translation_placeholders={"device_name": self.device.name},
             ) from err
-        if not success:
-            raise UpdateFailed(
-                translation_domain=DOMAIN,
-                translation_key="update_failed",
-                translation_placeholders={"device_name": self.device.name},
-            )
+        finally:
+            if generation == self._command_generation and self._command_polls_remaining:
+                self._command_polls_remaining -= 1
+                if self._command_polls_remaining:
+                    index = len(_COMMAND_SCAN_INTERVALS) - self._command_polls_remaining
+                    self.update_interval = timedelta(
+                        seconds=_COMMAND_SCAN_INTERVALS[index]
+                    )
+                else:
+                    self.update_interval = DEFAULT_SCAN_INTERVAL
         return self.device
 
     async def async_command(self, command: Awaitable[CommandResult]) -> CommandResult:

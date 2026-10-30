@@ -2,6 +2,7 @@
 # name: test_setup
   StateSnapshot({
     'attributes': ReadOnlyDict({
+      'command_status': 'reported',
       <ClimateEntityStateAttribute.CURRENT_TEMPERATURE: 'current_temperature'>: 23.5,
       <ClimateEntityStateAttribute.FAN_MODE: 'fan_mode'>: 'auto',
       <ClimateEntityCapabilityAttribute.FAN_MODES: 'fan_modes'>: list([
@@ -21,6 +22,8 @@
       ]),
       <ClimateEntityCapabilityAttribute.MAX_TEMP: 'max_temp'>: 30.0,
       <ClimateEntityCapabilityAttribute.MIN_TEMP: 'min_temp'>: 16.0,
+      'pending_commands': dict({
+      }),
       <EntityStateAttribute.SUPPORTED_FEATURES: 'supported_features'>: <ClimateEntityFeature: 171>,
       <ClimateEntityStateAttribute.SWING_MODE: 'swing_mode'>: 'auto',
       <ClimateEntityCapabilityAttribute.SWING_MODES: 'swing_modes'>: list([
@@ -35,6 +38,8 @@
       <ClimateEntityStateAttribute.TARGET_TEMP_LOW: 'target_temp_low'>: None,
       <ClimateEntityStateAttribute.TARGET_TEMPERATURE: 'temperature'>: 24.0,
       <ClimateEntityStateAttribute.TEMPERATURE_UNIT: 'temperature_unit'>: <UnitOfTemperature.CELSIUS: '°C'>,
+      'unconfirmed_commands': dict({
+      }),
     }),
     'context': <ANY>,
     'entity_id': 'climate.living_room',
